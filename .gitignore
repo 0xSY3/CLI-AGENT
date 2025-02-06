@@ -1,0 +1,20 @@
+
+/target/
+
+.idea/
+.vscode/
+*.swp
+*.swo
+
+*.pdb
+
+*.rs.bk
+
+.env
+.env.local
+
+# Cargo lock file (uncomment if developing a library)
+# Cargo.lock
+
+# Generated files
+*.rs.fmt
