@@ -18,22 +18,19 @@ pub enum Command {
         #[arg(value_name = "PROMPT")]
         prompt: String,
     },
-    /// Analyze Stylus code for gas optimizations
+    /// Analyze Stylus code for optimizations and security
     Analyze {
         /// Path to the Stylus source file
         #[arg(value_name = "FILE")]
         file: PathBuf,
-        /// Analysis type: gas, security, or all
-        #[arg(long, short)]
-        analysis_type: Option<String>,
-    },
-    /// Generate test cases for a Stylus contract
-    GenerateTests {
-        /// Path to the Stylus source file
-        #[arg(value_name = "FILE")]
-        file: PathBuf,
-        /// Test type: unit, fuzz, or both
-        #[arg(long, short)]
-        test_type: Option<String>,
+        /// Analysis type: gas, memory, size, security, or all
+        #[arg(short = 't', long = "analysis-type", value_name = "TYPE", default_value = "all")]
+        analysis_type: String,
+        /// Enable detailed memory usage analysis
+        #[arg(long)]
+        memory_details: bool,
+        /// Show Solidity vs Stylus comparison metrics
+        #[arg(long)]
+        compare_solidity: bool,
     },
 }

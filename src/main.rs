@@ -24,9 +24,10 @@ async fn main() -> anyhow::Result<()> {
             let response = conversation.single_query(&prompt).await?;
             println!("{}", response);
         }
-        Command::Analyze { file, analysis_type } => {
+        Command::Analyze { file, analysis_type, memory_details, compare_solidity } => {
             println!("Starting analysis of file: {:?}", file);
-            match stylus::analyze_code(&file, analysis_type.as_deref().unwrap_or("all")) {
+
+            match stylus::analyze_code(&file, &analysis_type, memory_details, compare_solidity) {
                 Ok(analysis) => {
                     if analysis.is_empty() {
                         println!("No issues found in the analysis.");
@@ -36,16 +37,6 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Err(e) => {
                     eprintln!("Analysis failed: {}", e);
-                    process::exit(1);
-                }
-            }
-        }
-        Command::GenerateTests { file, test_type } => {
-            println!("Generating tests for file: {:?}", file);
-            match stylus::generate_tests(&file, test_type.as_deref().unwrap_or("both")) {
-                Ok(tests) => println!("{}", tests),
-                Err(e) => {
-                    eprintln!("Test generation failed: {}", e);
                     process::exit(1);
                 }
             }
