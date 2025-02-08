@@ -1,39 +1,12 @@
 [package]
-name = "rig-chat-cli"
+name = "stylus-analyzer"
 version = "0.1.0"
 edition = "2021"
-
-[[bin]]
-name = "rig-chat-cli"
-path = "src/main.rs"
-
-[[example]]
-name = "inefficient_token"
-path = "examples/inefficient_token.rs"
-
-[[example]]
-name = "token"
-path = "examples/token.rs"
-
-[[example]]
-name = "vulnerable_staking"
-path = "examples/vulnerable_staking.rs"
+description = "AI-powered Arbitrum Stylus smart contract analyzer"
 
 [dependencies]
 rig-core = "0.1"
-tokio = { version = "1.35", features = ["full"] }
-anyhow = "1.0"
-thiserror = "1.0"
 clap = { version = "4.4", features = ["derive"] }
-colored = "2.1"
-dotenv = "0.15"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-regex = "1.10"
-syn = { version = "2.0", features = ["full", "extra-traits", "visit"] }
-quote = "1.0"
-proc-macro2 = "1.0"
-rayon = "1.8"
-proptest = "1.4"
-rand = "0.8"
-num-traits = "0.2"
+tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }
+colored = "2.0"
+async-trait = "0.1"
