@@ -5,6 +5,7 @@ edition = "2021"
 description = "AI-powered Arbitrum Stylus smart contract analyzer"
 
 [dependencies]
+dotenv = "0.15"
 rig-core = "0.1"
 clap = { version = "4.4", features = ["derive"] }
 tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }

@@ -1,5 +1,6 @@
 use std::error::Error;
 use clap::Parser;
+use dotenv::dotenv;
 
 mod cli;
 mod analyzer;
@@ -22,6 +23,7 @@ use audit::{AuditAnalyzer, patterns};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    dotenv().ok();
     let cli = Cli::parse();
 
     match cli.command {
