@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait AuditRule: Send + Sync {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>>;
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>>;
     fn name(&self) -> &'static str;
 }
 
@@ -14,7 +14,7 @@ pub struct StoragePatternRule;
 
 #[async_trait]
 impl AuditRule for UnusedStorageRule {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         if content.contains("StorageU64") || content.contains("StorageU256") {
@@ -38,7 +38,7 @@ impl AuditRule for UnusedStorageRule {
 
 #[async_trait]
 impl AuditRule for UnsafeCallRule {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         if content.contains("unsafe") {
@@ -60,7 +60,7 @@ impl AuditRule for UnsafeCallRule {
 
 #[async_trait]
 impl AuditRule for StoragePatternRule {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         if content.contains("get") && content.contains("set") {

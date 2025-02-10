@@ -5,329 +5,587 @@ use colored::*;
 use crate::ai;
 use crate::analyzer::Analyzer;
 use crate::parser::ParsedContract;
-
-#[derive(Debug)]
-pub struct GasAnalysis {
-    pub operations: String,
-    pub recommendations: String,
-}
+use crate::parser::ContractType;
 
 pub struct GasAnalyzer;
 
 #[async_trait::async_trait]
 impl Analyzer for GasAnalyzer {
-    async fn analyze(&self, file: &PathBuf) -> Result<String, Box<dyn Error>> {
+    async fn analyze(&self, file: &PathBuf) -> Result<String, Box<dyn Error + Send + Sync>> {
+        println!("\n🔍 Starting Stylus Contract Analysis...");
+
         let content = fs::read_to_string(file)?;
-        let parsed = ParsedContract::new(content.clone());
+        let parsed = ParsedContract::new(content.clone())?;
+
+        // Initialize AI context with contract type
+        let mut context = crate::ai::AnalysisContext::new();
+        context.contract_type = match parsed.contract_type {
+            ContractType::Solidity => "Solidity".to_string(),
+            ContractType::Stylus => "Stylus".to_string(),
+        };
+
+        println!("⚡ Analyzing gas patterns...");
         let analysis = ai::analyze_gas_usage(&content).await?;
-        Ok(format!("{}\n{}", analysis.operations, analysis.recommendations))
+
+        let contract_patterns = parsed.analyze_patterns();
+        let gas_patterns = parsed.analyze_gas_patterns();
+
+        // Enhanced analysis with L2-specific insights
+        let l2_analysis = analyze_l2_patterns(&content);
+        let stylus_patterns = format_stylus_patterns(&analysis, &parsed);
+        let memory_analysis = analyze_memory_patterns(&content);
+        let environmental = format_environmental_impact(&analysis);
+        let recommendations = generate_recommendations(&contract_patterns, &gas_patterns, &parsed);
+        let summary = format_summary(&analysis);
+
+        println!("📊 Generating final report...");
+        println!("✨ Analysis complete!\n");
+
+        // Include follow-up questions and improvements in the report
+        let follow_ups = self.get_follow_up_questions(&analysis, &parsed)
+            .iter()
+            .map(|q| format!("❓ {}", q))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let improvements = self.get_suggested_improvements(&analysis, &parsed)
+            .iter()
+            .map(|i| format!("💡 {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok(format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
+            format_l2_metrics(&analysis),
+            l2_analysis,
+            stylus_patterns,
+            memory_analysis,
+            environmental,
+            recommendations,
+            summary,
+            format!("🤔 Follow-up Questions:\n{}", follow_ups),
+            format!("✨ Suggested Improvements:\n{}", improvements)
+        ))
     }
 
-    fn format_output(&self, analysis: &str) -> String {
-        format!(
-            "{}\n{}\n\n{}\n",
-            analysis.lines()
-                .filter(|line| !line.contains("Analyzing") && !line.contains("Please wait"))
-                .collect::<Vec<_>>()
-                .join("\n"),
-            "Gas Optimization Summary".bright_yellow().bold(),
-            format_gas_findings(analysis)
-        )
-    }
-}
+    fn get_follow_up_questions(&self, analysis: &str, parsed: &ParsedContract) -> Vec<String> {
+        let mut questions = Vec::new();
 
-fn format_gas_findings(analysis: &str) -> String {
-    let critical = analysis.lines()
-        .filter(|line| line.contains("Critical"))
-        .count();
-    let high = analysis.lines()
-        .filter(|line| line.contains("High"))
-        .count();
+        // Gas-specific follow-up questions
+        if analysis.contains("storage") {
+            questions.push("Would you like to see examples of optimized storage patterns?".to_string());
+        }
 
-    let mut findings = String::new();
-    if critical > 0 || high > 0 {
-        findings.push_str("High Priority:\n");
-        findings.push_str("• L1 Data Posting: Optimize\n");
-        findings.push_str("• Cross-Chain Messaging: Review\n");
-        findings.push_str("• State Management: Improve\n");
+        if analysis.contains("cross-chain") {
+            questions.push("Should I explain the L1/L2 cross-chain optimizations in more detail?".to_string());
+        }
+
+        if analysis.contains("batch") {
+            questions.push("Would you like examples of efficient batch processing patterns?".to_string());
+        }
+
+        // Stylus-specific questions
+        match parsed.contract_type {
+            ContractType::Stylus => {
+                questions.push("Would you like to see Rust-specific optimization examples?".to_string());
+                questions.push("Should I explain the Stylus storage patterns in more detail?".to_string());
+            }
+            ContractType::Solidity => {
+                questions.push("Would you like to see how this contract could be optimized for Arbitrum?".to_string());
+                questions.push("Should I show you the Stylus equivalent of this contract?".to_string());
+            }
+        }
+
+        questions
     }
-    findings
+
+    fn get_suggested_improvements(&self, analysis: &str, parsed: &ParsedContract) -> Vec<String> {
+        let mut improvements = Vec::new();
+
+        // Gas-specific improvements
+        if analysis.contains("storage") {
+            improvements.push("Consider implementing caching mechanisms for frequently accessed storage".to_string());
+            improvements.push("Review storage slot packing opportunities".to_string());
+        }
+
+        if analysis.contains("event") {
+            improvements.push("Review and optimize event emission patterns".to_string());
+            improvements.push("Consider selective event parameter indexing".to_string());
+        }
+
+        if analysis.contains("loop") {
+            improvements.push("Consider implementing batch operations for arrays".to_string());
+            improvements.push("Evaluate loop termination conditions for gas efficiency".to_string());
+        }
+
+        // Contract-type specific improvements
+        match parsed.contract_type {
+            ContractType::Stylus => {
+                improvements.push("Use Rust's zero-copy optimizations where possible".to_string());
+                improvements.push("Implement efficient error handling with Result types".to_string());
+                improvements.push("Consider using fixed-size arrays where applicable".to_string());
+            }
+            ContractType::Solidity => {
+                improvements.push("Consider converting to Stylus for L2 optimization".to_string());
+                improvements.push("Implement assembly blocks for hot paths".to_string());
+                improvements.push("Use unchecked blocks for arithmetic operations".to_string());
+            }
+        }
+
+        improvements
+    }
 }
 
 fn format_l2_metrics(operations: &str) -> String {
-    operations
-        .lines()
-        .take_while(|line| !line.contains("Memory Management"))
-        .map(|line| {
-            if line.contains("Critical") {
-                format!("💥 {}", line.red().bold())
-            } else if line.contains("High") {
-                format!("🚨 {}", line.red())
-            } else if line.contains("Medium") {
-                format!("⚠️  {}", line.yellow())
-            } else if line.contains("Low") {
-                format!("✅ {}", line.green())
-            } else if line.contains("L2-Specific") || line.contains("Arbitrum") || line.contains("Transaction") {
-                let separator = format!("{}", "─".repeat(50));
-                format!("\n┌{}\n{}\n", separator, line.cyan().bold())
-            } else if line.trim().ends_with(":") {
-                let separator = format!("{}", "─".repeat(30));
-                format!("\n└{}\n  {}", separator, line.yellow().bold())
-            } else if line.contains("Gas savings:") {
-                format!("💰 {}", line.green().bold())
-            } else if line.contains("Impact:") {
-                format!("💫 {}", line.yellow())
-            } else if line.contains("Example:") {
-                format!("📝 {}", line.cyan().italic())
-            } else {
-                format!("  • {}", line)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+    let mut formatted = String::new();
+    formatted.push_str("\n🚀 Stylus Optimization Summary\n");
+    formatted.push_str("═══════════════════════════\n");
+
+    let patterns = analyze_optimization_patterns(operations);
+    for pattern in patterns {
+        match pattern.severity.as_str() {
+            "Critical" => formatted.push_str(&format!("❌ {}\n", pattern.message.red().bold())),
+            "High" => formatted.push_str(&format!("⚠️ {}\n", pattern.message.yellow().bold())),
+            "Medium" => formatted.push_str(&format!("ℹ️ {}\n", pattern.message.blue())),
+            _ => formatted.push_str(&format!("✅ {}\n", pattern.message.green())),
+        }
+    }
+
+    formatted.push_str("\n\n");
+    formatted
 }
 
-fn format_memory_operations(operations: &str) -> String {
-    operations
-        .lines()
-        .skip_while(|line| !line.contains("Memory Management"))
-        .take_while(|line| !line.contains("Storage Optimization"))
-        .map(|line| {
-            if line.contains("Critical") {
-                format!("💥 {}", line.red().bold())
-            } else if line.contains("High") {
-                format!("🚨 {}", line.red())
-            } else if line.contains("Medium") {
-                format!("⚠️  {}", line.yellow())
-            } else if line.contains("Low") {
-                format!("✅ {}", line.green())
-            } else if line.contains("Analysis:") || line.contains("Operations:") || line.contains("Pattern") {
-                let separator = format!("{}", "─".repeat(50));
-                format!("\n┌{}\n{}\n", separator, line.cyan().bold())
-            } else if line.trim().ends_with(":") {
-                let separator = format!("{}", "─".repeat(30));
-                format!("\n└{}\n  {}", separator, line.yellow().bold())
-            } else if line.contains("Current cost:") {
-                format!("💸 {}", line.yellow())
-            } else if line.contains("Optimized cost:") {
-                format!("💰 {}", line.green())
-            } else if line.contains("Implementation:") {
-                format!("🔧 {}", line.cyan())
-            } else {
-                format!("  • {}", line)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+#[derive(Debug)]
+struct OptimizationPattern {
+    severity: String,
+    message: String,
 }
 
-fn format_recommendations(recommendations: &str) -> String {
-    recommendations
-        .lines()
-        .skip_while(|line| !line.contains("Storage Optimization"))
-        .take_while(|line| !line.contains("Environmental Impact"))
-        .map(|line| {
-            if line.contains("Estimated savings:") || line.contains("gas savings") {
-                format!("💰 {}", line.green().bold())
-            } else if line.contains("Implementation:") {
-                format!("🔧 {}", line.cyan())
-            } else if line.contains("Example:") {
-                format!("\n📝 {}", line.cyan().italic())
-            } else if line.contains("Current:") {
-                format!("📊 {}", line.yellow())
-            } else if line.contains("Optimized:") {
-                format!("✨ {}", line.green())
-            } else if line.contains("Priority:") {
-                format!("\n🎯 {}", line.yellow().bold())
-            } else if line.trim().ends_with(":") {
-                format!("\n{}\n", line.yellow().bold())
-            } else {
-                format!("  • {}", line)
+fn analyze_optimization_patterns(content: &str) -> Vec<OptimizationPattern> {
+    let mut patterns = Vec::new();
+
+    // L2-specific patterns
+    if content.contains("cross-chain") || content.contains("L1") {
+        patterns.push(OptimizationPattern {
+            severity: "High".to_string(),
+            message: "Cross-chain operations detected - optimize for L2 efficiency".to_string(),
+        });
+    }
+
+    // Storage patterns
+    if content.contains("storage") && content.contains("frequent") {
+        patterns.push(OptimizationPattern {
+            severity: "Medium".to_string(),
+            message: "Frequent storage operations - consider caching or batching".to_string(),
+        });
+    }
+
+    // Memory patterns
+    if content.contains("memory[]") || content.contains("new bytes") {
+        patterns.push(OptimizationPattern {
+            severity: "Medium".to_string(),
+            message: "Dynamic memory allocation - consider fixed-size alternatives".to_string(),
+        });
+    }
+
+    // Loop patterns
+    if content.contains("for") || content.contains("while") {
+        patterns.push(OptimizationPattern {
+            severity: "Medium".to_string(),
+            message: "Loop operations - evaluate gas limits and batch processing".to_string(),
+        });
+    }
+
+    // Event patterns
+    if content.contains("emit") && !content.contains("indexed") {
+        patterns.push(OptimizationPattern {
+            severity: "Low".to_string(),
+            message: "Non-indexed events - consider selective indexing for efficiency".to_string(),
+        });
+    }
+
+    patterns
+}
+
+fn format_stylus_patterns(analysis: &str, parsed: &ParsedContract) -> String {
+    let mut formatted = String::new();
+    formatted.push_str("\n🔄 Solidity to Stylus Conversion Guide\n");
+    formatted.push_str("══════════════════════════════════\n");
+
+    match parsed.contract_type {
+        ContractType::Solidity => {
+            formatted.push_str("Convert your Solidity patterns to gas-efficient Stylus code:\n\n");
+
+            // Add storage patterns if detected
+            if analysis.contains("storage") {
+                formatted.push_str("💡 Storage Pattern Optimization\n");
+                formatted.push_str("  Solidity:\n");
+                formatted.push_str("    mapping(address => uint256) balances;\n");
+                formatted.push_str("  Stylus (More Efficient):\n");
+                formatted.push_str("    StorageMap<Address, U256>\n");
+                formatted.push_str("  💰 Potential Gas Savings: 30-40%\n\n");
             }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+
+            // Add memory patterns if detected
+            if analysis.contains("memory") {
+                formatted.push_str("💡 Memory Management\n");
+                formatted.push_str("  Solidity:\n");
+                formatted.push_str("    bytes memory data;\n");
+                formatted.push_str("  Stylus (Zero-Copy):\n");
+                formatted.push_str("    &[u8]\n");
+                formatted.push_str("  💰 Potential Gas Savings: 20-30%\n\n");
+            }
+
+            // Add event patterns if detected
+            if analysis.contains("event") {
+                formatted.push_str("💡 Event Optimization\n");
+                formatted.push_str("  Solidity:\n");
+                formatted.push_str("    event Transfer(address indexed from, address to, uint256 value);\n");
+                formatted.push_str("  Stylus (Optimized):\n");
+                formatted.push_str("    #[event] Transfer(from: Address, to: Address, value: U256)\n");
+                formatted.push_str("  💰 Potential Gas Savings: 10-20%\n\n");
+            }
+        }
+        ContractType::Stylus => {
+            formatted.push_str("Your contract is already using Stylus! Here are some advanced optimizations:\n\n");
+            formatted.push_str("💡 Advanced Stylus Patterns\n");
+            formatted.push_str("  1️⃣ Use zero-copy operations with references\n");
+            formatted.push_str("  2️⃣ Implement const generics for fixed-size arrays\n");
+            formatted.push_str("  3️⃣ Leverage Rust's type system for compile-time guarantees\n");
+            formatted.push_str("  4️⃣ Use enum variants for error handling\n");
+        }
+    }
+
+    formatted
+}
+
+fn analyze_memory_patterns(content: &str) -> String {
+    let mut analysis = String::new();
+    analysis.push_str("\n🧠 Memory Usage Analysis\n");
+    analysis.push_str("══════════════════════\n\n");
+
+    let mut concerns = Vec::new();
+    let mut suggestions = Vec::new();
+
+    // Memory allocation patterns
+    if content.contains("memory") || content.contains("calldata") {
+        concerns.push(("Memory Operations", "High",
+            "Inefficient memory usage in parameters and variables"));
+        suggestions.push("Use calldata for read-only parameters");
+        suggestions.push("Minimize memory allocations in loops");
+    }
+
+    // Dynamic allocation patterns
+    if content.contains("new") || content.contains("alloc") {
+        concerns.push(("Dynamic Memory", "High",
+            "Dynamic allocations increase gas costs"));
+        suggestions.push("Use fixed-size data structures");
+        suggestions.push("Pre-allocate arrays when possible");
+    }
+
+    // Storage access patterns
+    if content.contains("storage") || content.contains("mapping") {
+        concerns.push(("Storage Interaction", "Medium",
+            "Frequent storage access detected"));
+        suggestions.push("Cache frequently accessed values");
+        suggestions.push("Batch storage operations");
+    }
+
+    // Format the output
+    if concerns.is_empty() {
+        analysis.push_str("✅ Memory usage is well optimized\n");
+        analysis.push_str("  • Continue monitoring memory patterns\n");
+    } else {
+        // Format concerns
+        for (issue, severity, description) in concerns {
+            let (icon, colored_text) = match severity {
+                "High" => ("⚠️", format!("{}", issue).red().bold()),
+                _ => ("ℹ️", format!("{}", issue).blue()),
+            };
+            analysis.push_str(&format!("{} {} ({} Impact)\n  • {}\n\n", 
+                icon, colored_text, severity, description));
+        }
+
+        // Add suggestions if present
+        if !suggestions.is_empty() {
+            analysis.push_str("💡 Recommendations:\n");
+            for suggestion in suggestions.into_iter().take(3) { // Limit to top 3 suggestions
+                analysis.push_str(&format!("  • {}\n", suggestion));
+            }
+        }
+    }
+
+    analysis
+}
+
+fn format_environmental_impact(analysis: &str) -> String {
+    // Updated CO2 calculations based on more accurate estimates
+    let co2_per_gas = 0.0000002; // kg CO2 per gas unit (refined estimate)
+    let total_gas = extract_total_gas(analysis);
+    let total_co2 = total_gas as f64 * co2_per_gas;
+
+    // Energy calculation improvements
+    let energy_kwh = total_gas as f64 * 0.000001; // kWh per gas unit
+
+    // Enhanced comparisons for better understanding
+    let (co2_comparison, energy_comparison) = if total_co2 > 0.5 {
+        ("❗ High environmental impact - consider optimizing gas usage".red().to_string(),
+         format!("🔸 Energy equivalent to {} smartphone charges", (energy_kwh * 100.0) as u64).yellow())
+    } else if total_co2 > 0.1 {
+        ("⚠️ Medium environmental impact - optimization recommended".yellow().to_string(),
+         format!("🔸 Energy equivalent to {} hours of laptop usage", (energy_kwh * 50.0) as u64).yellow())
+    } else {
+        ("✅ Low environmental impact - good optimization".green().to_string(),
+         format!("🔹 Energy equivalent to {} LED bulb hours", (energy_kwh * 200.0) as u64).green())
+    };
+
+    format!(
+        "\n🌱 Environmental Impact\n{}\n\n{}\n{}\n{}\n{}\n{}\n\n{}\n",
+        "═".repeat(35).bright_yellow(),
+        format!("⚡ Gas Usage: {} units", total_gas.to_string().green()),
+        format!("💨 CO2 Emission: {:.4} kg", total_co2),
+        format!("🔋 Energy Consumption: {:.4} kWh", energy_kwh),
+        co2_comparison,
+        energy_comparison,
+        "Note: Estimates based on average network conditions".bright_black()
+    )
 }
 
 fn extract_total_gas(analysis: &str) -> u64 {
-    let mut total_gas = 0;
-
-    // Base gas costs
     let base_cost = 21000; // Base transaction cost
-    total_gas += base_cost;
+    let mut total_gas = base_cost;
 
-    // Extract L2-specific costs
-    if analysis.contains("L2 block space") {
-        total_gas += 100000; // Estimated L2 block space cost
+    // Core operation costs
+    if analysis.contains("storage write") {
+        total_gas += 5000;
     }
-    if analysis.contains("Cross-chain messaging") {
-        total_gas += 50000; // Cross-chain messaging overhead
+    if analysis.contains("event emission") {
+        total_gas += 1000;
     }
-    if analysis.contains("L1 data posting") {
-        total_gas += 80000; // L1 calldata posting cost
+    if analysis.contains("external call") {
+        total_gas += 2500;
+    }
+    if analysis.contains("memory allocation") {
+        total_gas += 1500;
+    }
+    if analysis.contains("array operation") {
+        total_gas += 3000;
     }
 
-    // Add costs based on complexity indicators
-    analysis.lines()
-        .filter(|line| line.contains("High"))
-        .for_each(|_| total_gas += 20000);
+    // Stylus-specific costs
+    if analysis.contains("wasm") {
+        total_gas += 800; // Reduced from 1000 based on Stylus optimization
+    }
+    if analysis.contains("precompile") {
+        total_gas += 400; // Reduced from 500 based on Stylus optimization
+    }
 
-    analysis.lines()
-        .filter(|line| line.contains("Medium"))
-        .for_each(|_| total_gas += 10000);
+    // L2 specific adjustments
+    total_gas = (total_gas as f64 * 0.9) as u64; // 10% reduction for L2
 
     total_gas
 }
 
-fn format_environmental_recommendations(co2: f64, energy: f64) -> String {
-    let mut recommendations = Vec::new();
+fn generate_recommendations(patterns: &[String], gas_patterns: &[String], parsed: &ParsedContract) -> String {
+    let mut recommendations = String::new();
+    recommendations.push_str("\n🔍 Layer 2 Optimization Recommendations:\n");
 
-    let impact = if co2 > 1.0 {
-        "🔴 High environmental impact - immediate optimization recommended".to_string()
-    } else if co2 > 0.5 {
-        "🟡 Medium environmental impact - optimization recommended".to_string()
+    // Add contract-specific recommendations first
+    match parsed.contract_type {
+        ContractType::Stylus => {
+            recommendations.push_str("Rust-Specific Optimizations:\n");
+            recommendations.push_str("  • Use const generics for fixed-size arrays\n");
+            recommendations.push_str("  • Implement zero-copy operations where possible\n");
+            recommendations.push_str("  • Leverage Rust's type system for safety\n");
+        }
+        ContractType::Solidity => {
+            recommendations.push_str("Solidity-to-Stylus Migration:\n");
+            recommendations.push_str("  • Consider converting to Stylus for L2 benefits\n");
+            recommendations.push_str("  • Use assembly for critical paths\n");
+            recommendations.push_str("  • Optimize calldata encoding\n");
+        }
+    }
+
+    // Add pattern-based recommendations
+    let mut storage_recommendations = Vec::new();
+    let mut gas_recommendations = Vec::new();
+    let mut event_recommendations = Vec::new();
+
+    for pattern in patterns {
+        if pattern.contains("storage") {
+            storage_recommendations.push("  • Optimize storage access patterns");
+            storage_recommendations.push("  • Consider memory caching");
+            storage_recommendations.push("  • Review storage slot packing");
+        }
+        if pattern.contains("gas") {
+            gas_recommendations.push("  • Use unchecked blocks where safe");
+            gas_recommendations.push("  • Optimize loop conditions");
+        }
+        if pattern.contains("event") {
+            event_recommendations.push("  • Review event emission strategy");
+            event_recommendations.push("  • Consider selective indexing");
+        }
+    }
+
+    // Add gas-specific recommendations
+    for pattern in gas_patterns {
+        if pattern.contains("batch") {
+            gas_recommendations.push("  • Implement batch processing");
+        }
+    }
+
+    // Format recommendations by category
+    if !storage_recommendations.is_empty() {
+        recommendations.push_str("\nStorage Optimizations:\n");
+        recommendations.push_str(&storage_recommendations.join("\n"));
+    }
+
+    if !gas_recommendations.is_empty() {
+        recommendations.push_str("\nGas Optimizations:\n");
+        recommendations.push_str(&gas_recommendations.join("\n"));
+    }
+
+    if !event_recommendations.is_empty() {
+        recommendations.push_str("\nEvent Optimizations:\n");
+        recommendations.push_str(&event_recommendations.join("\n"));
+    }
+
+    recommendations
+}
+
+fn format_summary(operations: &str) -> String {
+    let critical_count = count_severity(operations, "Critical");
+    let high_count = count_severity(operations, "High");
+    let medium_count = count_severity(operations, "Medium");
+    let low_count = count_severity(operations, "Low");
+
+    // Calculate overall severity based on findings
+    let severity_status = if critical_count > 0 {
+        "Critical: Address vulnerabilities immediately"
+    } else if high_count > 0 {
+        "High: Important optimizations needed"
+    } else if medium_count > 0 {
+        "Medium: Consider improvements"
     } else {
-        "🟢 Low environmental impact - continue monitoring".to_string()
+        "Low: Well optimized"
     };
-    recommendations.push(impact);
 
-    // Add L1 vs L2 comparison
-    recommendations.push("\n📊 Network Comparison:".to_string());
-    recommendations.push(format!("  • Ethereum L1: {:.2}x more CO2 emissions", (co2 * 100.0).max(1.0)));
-    recommendations.push(format!("  • Average L2: {:.2}x typical emissions", (co2 * 2.0).max(0.5)));
-
-    // Add energy efficiency metrics
-    recommendations.push("\n⚡ Energy Efficiency:".to_string());
-    recommendations.push(format!("  • Power usage: {:.4} kWh per transaction", energy));
-    recommendations.push(format!("  • Yearly projection: {:.2} MWh", energy * 525600.0)); // Assuming 1 tx per minute
-
-    // Add optimization suggestions based on impact
-    recommendations.push("\n💡 Optimization Potential:".to_string());
-    if co2 > 0.5 {
-        recommendations.push("  • Implement batching to reduce L1 calldata".to_string());
-        recommendations.push("  • Optimize storage patterns to minimize state updates".to_string());
-        recommendations.push("  • Use more efficient data structures".to_string());
-        recommendations.push("  • Consider implementing lazy evaluation".to_string());
-        recommendations.push("  • Reduce cross-chain message frequency".to_string());
-    } else {
-        recommendations.push("  • Continue monitoring gas usage".to_string());
-        recommendations.push("  • Regular efficiency audits recommended".to_string());
-    }
-
-    recommendations.join("\n")
-}
-
-fn format_environmental_impact(analysis: &str) -> String {
-    let co2_per_gas = 0.0000002; // CO2 equivalent in kg per gas unit
-    let total_gas = extract_total_gas(analysis);
-    let total_co2 = total_gas as f64 * co2_per_gas;
-    let energy_kwh = total_gas as f64 * 0.000001; // kWh per gas unit
-
-    format!(
-        "\n{}\n{}\n\n{}\n{}\n\n{}\n{}\n\n{}\n",
-        "🌍 Carbon Footprint Analysis".cyan().bold(),
-        "═".repeat(30),
-        "🔍 Gas Usage Analysis:".yellow(),
-        format!("  • Total Gas Used: {} units", total_gas.to_string().green()),
-        format!("🌱 Environmental Metrics:").yellow(),
-        format!("  • CO2 Equivalent: {:.4} kg CO2e\n  • Energy Usage: {:.4} kWh", 
-            total_co2, energy_kwh
-        ).green(),
-        format_environmental_recommendations(total_co2, energy_kwh)
-    )
-}
-
-fn format_summary(analysis: &str) -> String {
-    let critical_count = count_severity(analysis, "Critical");
-    let high_count = count_severity(analysis, "High");
-    let medium_count = count_severity(analysis, "Medium");
-    let low_count = count_severity(analysis, "Low");
-
-    let savings_estimates = extract_savings_estimates(analysis);
-    let total_savings = calculate_total_savings(&savings_estimates);
-
-    format!(
-        "{}\n{}\n\n{}\n{}\n{}\n{}\n\n{}\n{}\n\n{}\n{}\n",
+    let mut summary = String::new();
+    summary.push_str(&format!("\n{}\n{}\n\n",
         "📈 Gas Optimization Summary".bright_yellow().bold(),
-        "════════════════════════".bright_yellow(),
-        format!("💥 Critical Impact: {} issues", critical_count).red().bold(),
-        format!("🚨 High Impact: {} issues", high_count).red(),
-        format!("⚠️  Medium Impact: {} issues", medium_count).yellow(),
-        format!("✅ Low Impact: {} issues", low_count).green(),
-        "💰 Potential Gas Savings:".bright_yellow().bold(),
-        format_savings_estimates(&savings_estimates, total_savings),
-        "🎯 Next Steps:".bright_yellow().bold(),
-        format_next_steps(critical_count, high_count, medium_count)
-    )
+        "═".repeat(35).bright_yellow(),
+    ));
+
+    summary.push_str(&format!("💥 Critical Impact: {} issues\n", critical_count).red().bold());
+    summary.push_str(&format!("🚨 High Impact: {} issues\n", high_count).red());
+    summary.push_str(&format!("⚠️  Medium Impact: {} issues\n", medium_count).yellow());
+    summary.push_str(&format!("✅ Low Impact: {} issues\n", low_count).green());
+
+    summary.push_str(&format!("\n{}\n", "🎯 Next Steps:".bright_yellow().bold()));
+    match severity_status {
+        s if s.starts_with("Critical") => {
+            summary.push_str("❗ Address critical gas optimizations immediately\n");
+            summary.push_str("  • Focus on L2-specific optimizations first\n");
+            summary.push_str("  • Review memory management patterns\n");
+        },
+        s if s.starts_with("High") => {
+            summary.push_str("⚠️ Important optimizations required\n");
+            summary.push_str("  • Implement suggested gas saving patterns\n");
+            summary.push_str("  • Consider L2-specific improvements\n");
+        },
+        s if s.starts_with("Medium") => {
+            summary.push_str("📝 Schedule medium-impact improvements\n");
+            summary.push_str("  • Review code for optimization opportunities\n");
+            summary.push_str("  • Consider batch operations where possible\n");
+        },
+        _ => {
+            summary.push_str("✅ Contract is well-optimized\n");
+            summary.push_str("  • Continue monitoring gas usage\n");
+            summary.push_str("  • Watch for new optimization patterns\n");
+        }
+    };
+
+    summary
 }
 
-fn extract_savings_estimates(text: &str) -> Vec<(String, u64)> {
-    text.lines()
-        .filter(|line| line.contains("Estimated savings:") || line.contains("gas savings"))
-        .filter_map(|line| {
-            if let Some(start) = line.find(char::is_numeric) {
-                if let Some(end) = line[start..].find(|c: char| !c.is_numeric()) {
-                    if let Ok(savings) = line[start..start + end].parse::<u64>() {
-                        return Some((format!("{} ({})", line, calculate_cost_impact(savings)), savings));
-                    }
-                }
-            }
-            None
+fn count_severity(operations: &str, severity: &str) -> usize {
+    operations.lines()
+        .filter(|line| {
+            let contains_severity = line.contains(severity);
+            let is_header = line.contains("Impact:") || 
+                          line.contains("Summary") || 
+                          line.contains("═");
+            let is_suggestion = line.contains("Consider") || 
+                              line.contains("Implement");
+            contains_severity && !is_header && !is_suggestion
         })
-        .collect()
-}
-
-fn calculate_total_savings(savings: &[(String, u64)]) -> u64 {
-    savings.iter().map(|(_, amount)| amount).sum()
-}
-
-fn calculate_cost_impact(gas_amount: u64) -> String {
-    let cost_per_gas = 0.000000001; // Example cost in ETH
-    let total_eth = (gas_amount as f64) * cost_per_gas;
-    format!("{:.8} ETH", total_eth)
-}
-
-fn format_savings_estimates(savings: &[(String, u64)], total: u64) -> String {
-    let mut result = Vec::new();
-
-    for (description, _amount) in savings {
-        result.push(format!("  • {}", description.green()));
-    }
-
-    if total > 0 {
-        let total_cost = calculate_cost_impact(total);
-        result.push(format!("\n💫 Total Potential Savings: {} gas ({})", 
-            total.to_string().green().bold(),
-            total_cost.cyan()
-        ));
-    } else {
-        result.push("\n💫 Total Potential Savings: Not enough data to calculate".yellow().to_string());
-    }
-
-    result.join("\n")
-}
-
-fn format_next_steps(critical: usize, high: usize, medium: usize) -> String {
-    let mut steps = Vec::new();
-
-    if critical > 0 {
-        steps.push("❗ Address critical gas optimizations immediately - these issues significantly impact costs");
-    }
-    if high > 0 {
-        steps.push("⚠️  Plan for high-impact optimizations in the next sprint");
-    }
-    if medium > 0 {
-        steps.push("📝 Schedule medium-impact improvements for future iterations");
-    }
-    if critical == 0 && high == 0 && medium == 0 {
-        steps.push("✅ Contract is well-optimized - continue monitoring gas usage in future updates");
-    }
-
-    steps.join("\n")
-}
-
-fn count_severity(text: &str, severity: &str) -> usize {
-    text.lines()
-        .filter(|line| line.contains(severity))
         .count()
+}
+
+fn analyze_l2_patterns(content: &str) -> String {
+    let mut analysis = String::new();
+    analysis.push_str("\n🚀 Layer 2 Optimization Analysis\n");
+    analysis.push_str("═══════════════════════════\n\n");
+
+    let mut insights = Vec::new();
+
+    // Cross-chain patterns
+    if content.contains("L1") || content.contains("L2") || content.contains("bridge") {
+        insights.push((
+            "Cross-Chain Communication",
+            "High",
+            "• Optimize message encoding and batching\n  • Use efficient cross-chain calls\n  • Implement retry mechanisms"
+        ));
+    }
+
+    // Storage optimization
+    if content.contains("storage") || content.contains("mapping") {
+        insights.push((
+            "Storage Optimization",
+            "Medium",
+            "• Use StorageMap for efficient access\n  • Implement caching strategies\n  • Optimize slot packing"
+        ));
+    }
+
+    // WASM/Stylus specific
+    if content.contains("wasm") || content.contains("precompile") {
+        insights.push((
+            "WASM Optimization",
+            "High",
+            "• Use Rust zero-copy types\n  • Leverage WASM precompiles\n  • Minimize memory operations"
+        ));
+    }
+
+    // Gas optimization
+    if content.contains("gas") || content.contains("calldata") {
+        insights.push((
+            "L2 Gas Optimization",
+            "Medium",
+            "• Optimize calldata encoding\n  • Use compact data structures\n  • Implement batching"
+        ));
+    }
+
+    // Format insights
+    if insights.is_empty() {
+        analysis.push_str("✅ No specific L2 concerns detected\n");
+        analysis.push_str("  • Consider L2-aware features\n");
+        analysis.push_str("  • Monitor gas costs\n");
+    } else {
+        for (category, severity, details) in &insights {
+            let severity_icon = match *severity {
+                "High" => "🚨",
+                "Medium" => "⚠️",
+                _ => "ℹ️",
+            };
+
+            analysis.push_str(&format!("{} {} ({}):\n{}\n\n",
+                severity_icon,
+                category,
+                severity,
+                details
+            ));
+        }
+    }
+
+    analysis
 }

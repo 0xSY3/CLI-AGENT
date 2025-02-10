@@ -7,7 +7,7 @@ pub struct AccessControlRule;
 
 #[async_trait]
 impl AuditRule for AccessControlRule {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         // Check for public functions without access control

@@ -9,27 +9,25 @@ pub struct InteractionsAnalyzer;
 
 #[async_trait::async_trait]
 impl Analyzer for InteractionsAnalyzer {
-    async fn analyze(&self, file: &PathBuf) -> Result<String, Box<dyn Error>> {
-        let content = fs::read_to_string(file)?;
+    async fn analyze(&self, file: &PathBuf) -> Result<String, Box<dyn Error + Send + Sync>> {
+        let content = fs::read_to_string(file)
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         println!("🔄 Analyzing cross-contract interactions...");
         println!("⏳ Please wait while we process your contract...\n");
         let analysis = ai::analyze_contract_interactions(&content).await?;
-        Ok(analysis)
-    }
 
-    fn format_output(&self, analysis: &str) -> String {
-        format!(
+        Ok(format!(
             "\n{}\n{}\n\n{}\n{}\n\n{}\n{}\n\n{}\n{}\n\n{}\n",
             "🔗 Cross-Contract Interaction Analysis".bright_green().bold(),
             "═══════════════════════════════════".bright_green(),
             "📊 Interaction Patterns:".yellow().bold(),
-            format_overview(analysis),
+            format_overview(&analysis),
             "🛡️  Security Analysis:".yellow().bold(),
-            format_interactions(analysis),
+            format_interactions(&analysis),
             "💡 Optimization Recommendations:".yellow().bold(),
-            format_recommendations(analysis),
-            format_summary(analysis)
-        )
+            format_recommendations(&analysis),
+            format_summary(&analysis)
+        ))
     }
 }
 

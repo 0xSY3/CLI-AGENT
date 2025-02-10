@@ -15,7 +15,7 @@ pub struct CrossChainVulnerabilityPattern;
 
 #[async_trait::async_trait]
 impl AuditRule for ReentrancyPattern {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         if content.contains("external") && content.contains("call") {
@@ -37,7 +37,7 @@ impl AuditRule for ReentrancyPattern {
 
 #[async_trait::async_trait]
 impl AuditRule for L2SpecificPattern {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         if content.contains("block.number") || content.contains("block.timestamp") {
@@ -59,7 +59,7 @@ impl AuditRule for L2SpecificPattern {
 
 #[async_trait::async_trait]
 impl AuditRule for StorageSecurityPattern {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         if content.contains("StorageMap") || content.contains("StorageVec") {
@@ -95,7 +95,7 @@ impl AuditRule for StorageSecurityPattern {
 
 #[async_trait::async_trait]
 impl AuditRule for StateTransitionPattern {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         if content.contains("pub fn") && (content.contains("mut self") || content.contains("&mut self")) {
@@ -131,7 +131,7 @@ impl AuditRule for StateTransitionPattern {
 
 #[async_trait::async_trait]
 impl AuditRule for CrossChainVulnerabilityPattern {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         if content.contains("cross_chain") || content.contains("bridge") || content.contains("L1_to_L2") {

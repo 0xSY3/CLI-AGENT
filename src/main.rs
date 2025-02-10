@@ -1,6 +1,5 @@
 use std::error::Error;
 use clap::Parser;
-use dotenv::dotenv;
 
 mod cli;
 mod analyzer;
@@ -22,8 +21,7 @@ use analyzer::{
 use audit::{AuditAnalyzer, patterns};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    dotenv().ok();
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -31,7 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!("Analyzing gas usage for file: {}", file.display());
             let analyzer = GasAnalyzer;
             let analysis = analyzer.analyze(&file).await?;
-            println!("{}", analyzer.format_output(&analysis));
+            println!("{}", analysis);
         }
         Commands::Audit { file } => {
             println!("Performing security audit for file: {}", file.display());
@@ -43,9 +41,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
 
             let analysis = analyzer.analyze(&file).await?;
-            println!("{}", analyzer.format_output(&analysis));
+            println!("{}", analysis);
 
-            // Run specialized analyses if there are findings to report
+            // Run specialized analyses
             let gas_analysis = GasAnalyzer.analyze(&file).await?;
             let security_analysis = SecurityAnalyzer.analyze(&file).await?;
             let interaction_analysis = InteractionsAnalyzer.analyze(&file).await?;
@@ -84,13 +82,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!("Analyzing contract size for file: {}", file.display());
             let analyzer = SizeAnalyzer;
             let analysis = analyzer.analyze(&file).await?;
-            println!("{}", analyzer.format_output(&analysis));
+            println!("{}", analysis);
         }
         Commands::Secure { file } => {
             println!("Performing security analysis for file: {}", file.display());
             let analyzer = SecurityAnalyzer;
             let analysis = analyzer.analyze(&file).await?;
-            println!("{}", analyzer.format_output(&analysis));
+            println!("{}", analysis);
         }
         Commands::Report { file } => {
             println!("Generating report for file: {}", file.display());
@@ -124,19 +122,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!("Analyzing function complexity for file: {}", file.display());
             let analyzer = ComplexityAnalyzer;
             let analysis = analyzer.analyze(&file).await?;
-            println!("{}", analyzer.format_output(&analysis));
+            println!("{}", analysis);
         }
         Commands::Interactions { file } => {
             println!("Analyzing cross-contract interactions for file: {}", file.display());
             let analyzer = InteractionsAnalyzer;
             let analysis = analyzer.analyze(&file).await?;
-            println!("{}", analyzer.format_output(&analysis));
+            println!("{}", analysis);
         }
         Commands::Quality { file } => {
             println!("Analyzing code quality metrics for file: {}", file.display());
             let analyzer = QualityAnalyzer;
             let analysis = analyzer.analyze(&file).await?;
-            println!("{}", analyzer.format_output(&analysis));
+            println!("{}", analysis);
         }
     }
 

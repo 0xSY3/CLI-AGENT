@@ -7,7 +7,7 @@ pub struct L2OptimizationRule;
 
 #[async_trait]
 impl AuditRule for L2OptimizationRule {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         // Check for batch operation patterns
@@ -52,6 +52,29 @@ impl AuditRule for L2OptimizationRule {
                     severity: Severity::Low,
                     risk_description: "Non-indexed events may increase gas costs and reduce searchability".to_string(),
                     recommendation: "Use indexed parameters for searchable event data".to_string(),
+                });
+            }
+        }
+
+        // Stylus-specific patterns
+        if content.contains("stylus_sdk") {
+            // Check for proper memory management
+            if !content.contains("prealloc") && (content.contains("Vec::new") || content.contains("String::new")) {
+                vulnerabilities.push(Vulnerability {
+                    name: "Non-preallocated Collections".to_string(),
+                    severity: Severity::Medium,
+                    risk_description: "Dynamic allocation in Stylus contracts can be expensive".to_string(),
+                    recommendation: "Use preallocation for collections when size is known".to_string(),
+                });
+            }
+
+            // Check for cross-contract call optimization
+            if content.contains("call!") && !content.contains("multicall") {
+                vulnerabilities.push(Vulnerability {
+                    name: "Unoptimized Cross-Contract Calls".to_string(),
+                    severity: Severity::Medium,
+                    risk_description: "Multiple separate calls increase L2 operation costs".to_string(),
+                    recommendation: "Use multicall pattern for batching cross-contract interactions".to_string(),
                 });
             }
         }

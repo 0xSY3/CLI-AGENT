@@ -7,7 +7,7 @@ pub struct TestPatternRule;
 
 #[async_trait]
 impl AuditRule for TestPatternRule {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         // Check for test module presence

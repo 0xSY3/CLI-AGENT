@@ -15,6 +15,7 @@ pub mod test_patterns;
 
 use vulnerabilities::{Vulnerability, Severity};
 use rules::AuditRule;
+use report::generate_full_report;
 
 #[derive(Debug)]
 pub struct AuditResult {
@@ -38,16 +39,17 @@ impl AuditAnalyzer {
     pub fn add_rule(&self, rule: Box<dyn AuditRule>) {
         self.rules.write().unwrap().push(rule);
     }
-
-    fn format_audit_result(&self, result: &AuditResult) -> String {
-        report::generate_report(result)
-    }
 }
 
 #[async_trait::async_trait]
 impl Analyzer for AuditAnalyzer {
-    async fn analyze(&self, file: &PathBuf) -> Result<String, Box<dyn Error>> {
-        let content = std::fs::read_to_string(file)?;
+    async fn analyze(&self, file: &PathBuf) -> Result<String, Box<dyn Error + Send + Sync>> {
+        let content = std::fs::read_to_string(file).map_err(|e| {
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to read file: {}", e)
+            )) as Box<dyn Error + Send + Sync>
+        })?;
 
         let mut audit_result = AuditResult {
             critical_vulnerabilities: Vec::new(),
@@ -58,15 +60,30 @@ impl Analyzer for AuditAnalyzer {
 
         // Get all rules first
         let rules = {
-            let guard = self.rules.read().unwrap();
+            let guard = self.rules.read().map_err(|e| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to acquire read lock: {}", e)
+                )) as Box<dyn Error + Send + Sync>
+            })?;
             guard.iter().map(|rule| rule.name().to_string()).collect::<Vec<_>>()
         };
 
-        // Process each rule individually
+        // Process each rule individually with improved error handling
         for rule_name in rules {
             let mut rule = {
-                let mut guard = self.rules.write().unwrap();
-                let idx = guard.iter().position(|r| r.name() == rule_name).unwrap();
+                let mut guard = self.rules.write().map_err(|e| {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to acquire write lock: {}", e)
+                    )) as Box<dyn Error + Send + Sync>
+                })?;
+                let idx = guard.iter().position(|r| r.name() == rule_name).ok_or_else(|| {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Rule '{}' not found", rule_name)
+                    )) as Box<dyn Error + Send + Sync>
+                })?;
                 guard.swap_remove(idx)
             };
 
@@ -81,17 +98,20 @@ impl Analyzer for AuditAnalyzer {
                         }
                     }
                 }
-                Err(e) => eprintln!("Error running rule {}: {}", rule_name, e),
+                Err(e) => {
+                    eprintln!("Error running rule {}: {}", rule_name, e);
+                }
             }
 
             // Put the rule back
-            self.rules.write().unwrap().push(rule);
+            self.rules.write().map_err(|e| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to acquire write lock: {}", e)
+                )) as Box<dyn Error + Send + Sync>
+            })?.push(rule);
         }
 
-        Ok(self.format_audit_result(&audit_result))
-    }
-
-    fn format_output(&self, analysis: &str) -> String {
-        format!("{}", analysis)
+        Ok(generate_full_report(&audit_result))
     }
 }

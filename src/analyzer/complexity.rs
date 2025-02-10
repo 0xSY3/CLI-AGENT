@@ -9,24 +9,21 @@ pub struct ComplexityAnalyzer;
 
 #[async_trait::async_trait]
 impl Analyzer for ComplexityAnalyzer {
-    async fn analyze(&self, file: &PathBuf) -> Result<String, Box<dyn Error>> {
+    async fn analyze(&self, file: &PathBuf) -> Result<String, Box<dyn Error + Send + Sync>> {
         let content = fs::read_to_string(file)?;
         println!("🔄 Analyzing function complexity...");
         println!("⏳ Please wait while we process your contract...\n");
         let analysis = ai::analyze_function_complexity(&content).await?;
-        Ok(analysis)
-    }
 
-    fn format_output(&self, analysis: &str) -> String {
-        format!(
+        Ok(format!(
             "\n{}\n{}\n\n{}\n{}\n{}\n\n{}\n",
             "🔍 Function Complexity Analysis Report".bright_green().bold(),
             "══════════════════════════════════".bright_green(),
             "📊 Complexity Distribution:".yellow().bold(),
-            format_overview(analysis),
-            format_metrics(analysis),
-            format_summary(analysis)
-        )
+            format_overview(&analysis),
+            format_metrics(&analysis),
+            format_summary(&analysis)
+        ))
     }
 }
 

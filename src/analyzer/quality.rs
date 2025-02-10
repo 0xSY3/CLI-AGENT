@@ -10,30 +10,27 @@ pub struct QualityAnalyzer;
 
 #[async_trait::async_trait]
 impl Analyzer for QualityAnalyzer {
-    async fn analyze(&self, file: &PathBuf) -> Result<String, Box<dyn Error>> {
+    async fn analyze(&self, file: &PathBuf) -> Result<String, Box<dyn Error + Send + Sync>> {
         let content = fs::read_to_string(file)?;
-        let _parsed = ParsedContract::new(content.clone());
+        let _parsed = ParsedContract::new(content.clone())?;
 
         println!("📊 Analyzing code quality metrics...");
         println!("⏳ Please wait while we process your contract...\n");
 
         let analysis = ai::analyze_code_quality(&content).await?;
-        Ok(analysis)
-    }
 
-    fn format_output(&self, analysis: &str) -> String {
-        format!(
+        Ok(format!(
             "\n{}\n{}\n\n{}\n{}\n\n{}\n{}\n\n{}\n{}\n\n{}\n",
             "🎯 Code Quality Analysis Report".bright_green().bold(),
             "═══════════════════════════".bright_green(),
             "📊 Quality Metrics Overview:".yellow().bold(),
-            format_metrics(analysis),
+            format_metrics(&analysis),
             "💡 Best Practices Analysis:".yellow().bold(),
-            format_practices(analysis),
+            format_practices(&analysis),
             "⚠️  Areas for Improvement:".yellow().bold(),
-            format_improvements(analysis),
-            format_summary(analysis)
-        )
+            format_improvements(&analysis),
+            format_summary(&analysis)
+        ))
     }
 }
 

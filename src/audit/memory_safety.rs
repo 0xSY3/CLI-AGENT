@@ -6,7 +6,7 @@ pub struct MemorySafetyRule;
 
 #[async_trait::async_trait]
 impl AuditRule for MemorySafetyRule {
-    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error>> {
+    async fn check(&mut self, content: &str) -> Result<Vec<Vulnerability>, Box<dyn Error + Send + Sync>> {
         let mut vulnerabilities = Vec::new();
 
         // Check raw pointer usage
@@ -57,6 +57,39 @@ impl AuditRule for MemorySafetyRule {
                 risk_description: "Improper lifetime usage can lead to memory safety issues".to_string(),
                 recommendation: "Review lifetime annotations and ensure they are necessary".to_string(),
             });
+        }
+
+        // Stylus-specific memory checks
+        if content.contains("stylus_sdk") {
+            // Check for large allocations
+            if content.contains("Vec::with_capacity") && content.contains(">1024") {
+                vulnerabilities.push(Vulnerability {
+                    name: "Large Memory Allocation".to_string(),
+                    severity: Severity::High,
+                    risk_description: "Large memory allocations can cause contract execution failures".to_string(),
+                    recommendation: "Use smaller, fixed-size allocations or paginate data".to_string(),
+                });
+            }
+
+            // Check for proper storage usage
+            if content.contains("storage::") && !content.contains("try_") {
+                vulnerabilities.push(Vulnerability {
+                    name: "Unchecked Storage Access".to_string(),
+                    severity: Severity::Medium,
+                    risk_description: "Storage operations without error handling may fail silently".to_string(),
+                    recommendation: "Use try_ variants for storage operations and handle errors explicitly".to_string(),
+                });
+            }
+
+            // Check for proper error handling in external calls
+            if content.contains("external::") && !content.contains("Result<") {
+                vulnerabilities.push(Vulnerability {
+                    name: "Unchecked External Calls".to_string(),
+                    severity: Severity::High,
+                    risk_description: "External calls without proper error handling can lead to undefined state".to_string(),
+                    recommendation: "Always use Result for external calls and handle all error cases".to_string(),
+                });
+            }
         }
 
         Ok(vulnerabilities)

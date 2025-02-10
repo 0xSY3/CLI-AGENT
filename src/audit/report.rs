@@ -1,161 +1,74 @@
 use super::{AuditResult, Vulnerability};
 use colored::*;
-use std::collections::HashSet;
 
-pub fn generate_report(result: &AuditResult) -> String {
+pub fn generate_full_report(result: &AuditResult) -> String {
     let mut report = String::new();
-    let risk_score = calculate_risk_score(result);
-    let total = total_issues(result);
 
-    // Header and Summary
+    // Header
     report.push_str(&format!("{}\n", 
-        "Smart Contract Security Audit".bright_green().bold()
+        "Smart Contract Security Audit Report".bright_green().bold()
     ));
-    report.push_str(&format!("{}\n\n", "═".repeat(40).bright_green()));
-    report.push_str(&format!("Risk Score: {}/10 | Issues Found: {}\n\n",
-        format!("{:.1}", risk_score).cyan().bold(),
-        total.to_string().cyan()
-    ));
+    report.push_str(&format!("{}\n\n", "═".repeat(50).bright_green()));
 
-    let mut seen = HashSet::new();
+    // Vulnerability Summary
+    report.push_str(&format!("{}\n", "Summary".bold()));
+    report.push_str(&format!("Critical Issues: {}\n", result.critical_vulnerabilities.len().to_string().red()));
+    report.push_str(&format!("High Issues: {}\n", result.high_vulnerabilities.len().to_string().yellow()));
+    report.push_str(&format!("Medium Issues: {}\n", result.medium_vulnerabilities.len().to_string().blue()));
+    report.push_str(&format!("Low Issues: {}\n\n", result.low_vulnerabilities.len().to_string().green()));
 
-    // Critical & High Issues
-    if !result.critical_vulnerabilities.is_empty() || !result.high_vulnerabilities.is_empty() {
-        report.push_str(&format!("{}\n", "Critical & High Severity Issues".red().bold()));
-
+    // Detailed Findings
+    if !result.critical_vulnerabilities.is_empty() {
+        report.push_str(&format!("\n{}\n", "Critical Findings".red().bold()));
         for vuln in &result.critical_vulnerabilities {
-            let key = format!("{}:{}", vuln.name, vuln.recommendation);
-            if !seen.contains(&key) {
-                seen.insert(key);
-                report.push_str(&format_critical_vulnerability(vuln));
-            }
+            report.push_str(&format_vulnerability(vuln, "❗"));
         }
+    }
 
+    if !result.high_vulnerabilities.is_empty() {
+        report.push_str(&format!("\n{}\n", "High Risk Findings".yellow().bold()));
         for vuln in &result.high_vulnerabilities {
-            let key = format!("{}:{}", vuln.name, vuln.recommendation);
-            if !seen.contains(&key) {
-                seen.insert(key);
-                report.push_str(&format_high_vulnerability(vuln));
-            }
+            report.push_str(&format_vulnerability(vuln, "⚠️"));
         }
     }
 
-    // Medium Issues
     if !result.medium_vulnerabilities.is_empty() {
-        report.push_str(&format!("\n{}\n", "Medium Severity Issues".yellow().bold()));
+        report.push_str(&format!("\n{}\n", "Medium Risk Findings".blue().bold()));
         for vuln in &result.medium_vulnerabilities {
-            let key = format!("{}:{}", vuln.name, vuln.recommendation);
-            if !seen.contains(&key) {
-                seen.insert(key);
-                report.push_str(&format_medium_vulnerability(vuln));
-            }
+            report.push_str(&format_vulnerability(vuln, "ℹ️"));
         }
     }
 
-    // Low Issues
     if !result.low_vulnerabilities.is_empty() {
-        report.push_str(&format!("\n{}\n", "Low Severity Issues".blue().bold()));
+        report.push_str(&format!("\n{}\n", "Low Risk Findings".green().bold()));
         for vuln in &result.low_vulnerabilities {
-            let key = format!("{}:{}", vuln.name, vuln.recommendation);
-            if !seen.contains(&key) {
-                seen.insert(key);
-                report.push_str(&format_low_vulnerability(vuln));
-            }
+            report.push_str(&format_vulnerability(vuln, "📝"));
         }
     }
 
-    // Recommendations
-    if total > 0 {
-        report.push_str(&format!("\n{}\n", "Recommended Actions".bright_cyan().bold()));
-        report.push_str(&generate_action_items(result));
+    // Mitigation Summary
+    if result.critical_vulnerabilities.is_empty() && 
+       result.high_vulnerabilities.is_empty() && 
+       result.medium_vulnerabilities.is_empty() && 
+       result.low_vulnerabilities.is_empty() {
+        report.push_str(&format!("\n{}\n", "✅ No vulnerabilities found!".green()));
+    } else {
+        report.push_str(&format!("\n{}\n", "Recommended Actions".cyan().bold()));
+        report.push_str("• Review all identified vulnerabilities\n");
+        report.push_str("• Prioritize fixes based on severity level\n");
+        report.push_str("• Implement suggested mitigations\n");
+        report.push_str("• Conduct thorough testing after fixes\n");
+        report.push_str("• Consider additional security review\n");
     }
 
     report
 }
 
-fn format_critical_vulnerability(vuln: &Vulnerability) -> String {
-    format!("❗ {}\n  Risk: {}\n  Fix: {}\n\n",
-        vuln.name.red().bold(),
+fn format_vulnerability(vuln: &Vulnerability, icon: &str) -> String {
+    format!("{} {}\n  Risk: {}\n  Mitigation: {}\n\n",
+        icon,
+        vuln.name,
         vuln.risk_description,
         vuln.recommendation.bright_green()
     )
-}
-
-fn format_high_vulnerability(vuln: &Vulnerability) -> String {
-    format!("⚠️ {}\n  Risk: {}\n  Fix: {}\n\n",
-        vuln.name.red(),
-        vuln.risk_description,
-        vuln.recommendation.bright_green()
-    )
-}
-
-fn format_medium_vulnerability(vuln: &Vulnerability) -> String {
-    format!("⚡ {}\n  Risk: {}\n  Fix: {}\n\n",
-        vuln.name.yellow(),
-        vuln.risk_description,
-        vuln.recommendation.bright_green()
-    )
-}
-
-fn format_low_vulnerability(vuln: &Vulnerability) -> String {
-    format!("ℹ️ {}\n  Risk: {}\n  Fix: {}\n\n",
-        vuln.name.blue(),
-        vuln.risk_description,
-        vuln.recommendation.bright_green()
-    )
-}
-
-fn total_issues(result: &AuditResult) -> usize {
-    result.critical_vulnerabilities.len() +
-    result.high_vulnerabilities.len() +
-    result.medium_vulnerabilities.len() +
-    result.low_vulnerabilities.len()
-}
-
-fn calculate_risk_score(result: &AuditResult) -> f64 {
-    let critical_weight = 10.0;
-    let high_weight = 7.0;
-    let medium_weight = 4.0;
-    let low_weight = 1.0;
-
-    let total_weight = result.critical_vulnerabilities.len() as f64 * critical_weight +
-                      result.high_vulnerabilities.len() as f64 * high_weight +
-                      result.medium_vulnerabilities.len() as f64 * medium_weight +
-                      result.low_vulnerabilities.len() as f64 * low_weight;
-
-    let max_score = 10.0;
-    let normalized_score = total_weight / 3.0;
-
-    normalized_score.min(max_score)
-}
-
-fn generate_action_items(result: &AuditResult) -> String {
-    let mut items = String::new();
-    let mut actions = Vec::new();
-
-    // Critical priority actions
-    for vuln in &result.critical_vulnerabilities {
-        actions.push(format!("1. {}", vuln.recommendation));
-    }
-
-    // High priority actions
-    for vuln in &result.high_vulnerabilities {
-        actions.push(format!("2. {}", vuln.recommendation));
-    }
-
-    // Medium priority actions
-    for vuln in &result.medium_vulnerabilities {
-        actions.push(format!("3. {}", vuln.recommendation));
-    }
-
-    // Sort actions by priority (prefix number) and remove duplicates
-    actions.sort();
-    actions.dedup();
-
-    // Remove priority numbers and format
-    for action in actions {
-        items.push_str(&format!("• {}\n", &action[3..]));
-    }
-
-    items
 }
