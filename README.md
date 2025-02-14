@@ -57,8 +57,8 @@ AI Agent leveraging sophisticated algorithms to enhance Arbitrum Stylus smart co
 
 1. Clone the repository:
 
-   ```git clone https://github.com/0xsy3/stylus-analyzer.git```
-   ```cd stylus-analyzer```
+ ```git clone https://github.com/0xsy3/CLI-AGENT.git```
+ ```cd CLI-AGENT```
 
 3. Build the project:
 
